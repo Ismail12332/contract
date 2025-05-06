@@ -16,10 +16,6 @@ const PORT = process.env.PORT || 3000;
 const distPath = path.join(__dirname, '../public/dist');
 app.use(express.static(distPath));
 
-// Для SPA: всегда возвращаем index.html на все остальные маршруты
-app.get('*', (req, res) => {
-  res.sendFile(path.join(distPath, 'index.html'));
-});
 
 const server = http.createServer(app); // создаём HTTP-сервер на базе Express
 const io = new Server(server, {
@@ -98,4 +94,9 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Для SPA: всегда возвращаем index.html на все остальные маршруты
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
 });
