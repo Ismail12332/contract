@@ -24,7 +24,7 @@ app.get('*', (req, res) => {
 const server = http.createServer(app); // создаём HTTP-сервер на базе Express
 const io = new Server(server, {
     cors: {
-        origin: 'https://contractors.onrender.com',
+        origin: 'https://contractors-0q4c.onrender.com',
         methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT', 'OPTIONS'],
         allowedHeaders: ['Content-Type','Authorization'],
     }
@@ -71,7 +71,7 @@ server.listen(PORT, () => {
 
 // Настройка CORS
 app.use(cors({
-    origin: 'https://contractors.onrender.com', // Укажите адрес вашего фронтенда
+    origin: 'https://contractors-0q4c.onrender.com', // Укажите адрес вашего фронтенда
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Authorization', 'Content-Type'], // Разрешаем заголовок Authorization
     credentials: false, // Не используем куки
