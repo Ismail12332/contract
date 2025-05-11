@@ -99,12 +99,21 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
         experience,
         services,
         description,
-        selectedActions,
-        selectedObjects,
-        selectedLocations,
-        selectedSizes,
-        selectedTimes,
       } = req.body;
+
+      const {
+        selectedActions = '[]',
+        selectedObjects = '[]',
+        selectedLocations = '[]',
+        selectedSizes = '[]',
+        selectedTimes = '[]',
+      } = req.body;
+
+      const formattedActions = formatArray(JSON.parse(selectedActions));
+      const formattedObjects = formatArray(JSON.parse(selectedObjects));
+      const formattedLocations = formatArray(JSON.parse(selectedLocations));
+      const formattedSizes = formatArray(JSON.parse(selectedSizes));
+      const formattedTimes = formatArray(JSON.parse(selectedTimes));
 
       // Проверка обязательных полей
       if (!companyName || !ownerName || !email || !phone || !experience || !services || !description) {
@@ -133,11 +142,14 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
         }
       }
 
-      // Преобразуем массивы в формат PostgreSQL
-      const formatArray = (array) => `{${array.map((item) => `"${item}"`).join(',')}}`;
+      const formatArray = (array) => {
+        if (!Array.isArray(array)) {
+          return '{}'; // Возвращаем пустой массив в формате PostgreSQL
+        }
+        return `{${array.map((item) => `"${item}"`).join(',')}}`;
+      };
 
       try {
-        // Записываем данные в базу
         const { data, error } = await supabase.from('companies').insert([
           {
             company_name: companyName,
@@ -148,14 +160,14 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
             years_in_business: experience,
             services,
             description,
-            selected_actions: formatArray(JSON.parse(selectedActions)),
-            selected_objects: formatArray(JSON.parse(selectedObjects)),
-            selected_locations: formatArray(JSON.parse(selectedLocations)),
-            selected_sizes: formatArray(JSON.parse(selectedSizes)),
-            selected_times: formatArray(JSON.parse(selectedTimes)),
+            selected_actions: formattedActions,
+            selected_objects: formattedObjects,
+            selected_locations: formattedLocations,
+            selected_sizes: formattedSizes,
+            selected_times: formattedTimes,
             user_email: userEmail,
-            status: 'review',
-            image_url: imageUrl, // Сохраняем путь к изображению
+            status: 'active',
+            image_url: imageUrl,
           },
         ]);
 
@@ -205,12 +217,21 @@ router.post('/applications', async (req, res) => {
         experience,
         services,
         description,
-        selectedActions,
-        selectedObjects,
-        selectedLocations,
-        selectedSizes,
-        selectedTimes,
       } = req.body;
+
+      const {
+        selectedActions = '[]',
+        selectedObjects = '[]',
+        selectedLocations = '[]',
+        selectedSizes = '[]',
+        selectedTimes = '[]',
+      } = req.body;
+
+      const formattedActions = formatArray(JSON.parse(selectedActions));
+      const formattedObjects = formatArray(JSON.parse(selectedObjects));
+      const formattedLocations = formatArray(JSON.parse(selectedLocations));
+      const formattedSizes = formatArray(JSON.parse(selectedSizes));
+      const formattedTimes = formatArray(JSON.parse(selectedTimes));
 
       // Проверка обязательных полей
       if (!companyName || !ownerName || !email || !phone || !experience || !services || !description) {
@@ -230,11 +251,11 @@ router.post('/applications', async (req, res) => {
             services,
             description,
             status: 'pending',
-            selected_actions: selectedActions,
-            selected_objects: selectedObjects,
-            selected_locations: selectedLocations,
-            selected_sizes: selectedSizes,
-            selected_times: selectedTimes,
+            selected_actions: formattedActions,
+            selected_objects: formattedObjects,
+            selected_locations: formattedLocations,
+            selected_sizes: formattedSizes,
+            selected_times: formattedTimes,
             user_email: userEmail,
           },
         ]);
@@ -331,8 +352,6 @@ router.get('/users/me', async (req, res) => {
             }
 
             if (existingUser) {
-                // Если пользователь найден, возвращаем его данные
-                console.log('User found:', existingUser);
                 return res.status(200).json(existingUser);
             }
 
@@ -353,7 +372,6 @@ router.get('/users/me', async (req, res) => {
                 console.error('Error creating user:', newUserError);
                 return res.status(500).json({ message: 'Failed to create user' });
             }
-            console.log('New user created:', newUser);
             res.status(201).json(newUser);
         });
     } catch (err) {
@@ -367,6 +385,7 @@ router.post('/chats', async (req, res) => {
     const authHeader = req.headers.authorization;
   
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Authorization header is missing or invalid');
       return res.status(401).json({ message: 'Authorization token is missing or invalid' });
     }
   
@@ -390,6 +409,7 @@ router.post('/chats', async (req, res) => {
           .single();
   
         if (companyError || !company) {
+          console.error('Company not found:', companyError);
           return res.status(404).json({ message: 'Company not found' });
         }
   
@@ -410,6 +430,7 @@ router.post('/chats', async (req, res) => {
           .single();
   
         if (errorA || errorB || !userA || !userB) {
+          console.error('Error fetching users:', errorA || errorB);
           return res.status(404).json({ message: 'Users not found' });
         }
   
@@ -420,6 +441,7 @@ router.post('/chats', async (req, res) => {
           .rpc('find_existing_chat', { user_id_a: userIdA, user_id_b: userIdB });
   
         if (chatCheckError) {
+          console.error('Error checking existing chats:', chatCheckError);
           return res.status(500).json({ message: 'Failed to check existing chats' });
         }
   
@@ -435,6 +457,7 @@ router.post('/chats', async (req, res) => {
           .single();
   
         if (chatError) {
+          console.error('Error creating chat:', chatError);
           return res.status(500).json({ message: 'Failed to create chat' });
         }
   
@@ -447,6 +470,7 @@ router.post('/chats', async (req, res) => {
           ]);
   
         if (participantsError) {
+          console.error('Error adding chat participants:', participantsError);
           return res.status(500).json({ message: 'Failed to add chat participants' });
         }
   
@@ -457,6 +481,66 @@ router.post('/chats', async (req, res) => {
         res.status(500).json({ message: 'Internal Server Error' });
       }
     });
+  });
+
+
+
+  router.get('/chats/:chatId', async (req, res) => {
+    const authHeader = req.headers.authorization;
+  
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
+    }
+  
+    const token = authHeader.split(' ')[1];
+    const { chatId } = req.params;
+  
+    try {
+      jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+        if (err) {
+          console.error('Token verification error:', err);
+          return res.status(401).json({ message: 'Invalid token' });
+        }
+  
+        const userEmail = decoded.email;
+  
+        // Получаем данные чата
+        const { data: chatParticipants, error: participantsError } = await supabase
+          .from('chat_participants')
+          .select('user_id')
+          .eq('chat_id', chatId);
+  
+        if (participantsError || !chatParticipants) {
+          console.error('Error fetching chat participants:', participantsError);
+          return res.status(404).json({ message: 'Chat not found' });
+        }
+  
+        // Получаем данные другого участника
+        const otherParticipant = chatParticipants.find((p) => p.user_id !== decoded.user_id);
+        if (!otherParticipant) {
+          return res.status(404).json({ message: 'Chat participant not found' });
+        }
+  
+        const { data: user, error: userError } = await supabase
+          .from('users')
+          .select('username, picture')
+          .eq('user_id', otherParticipant.user_id)
+          .single();
+  
+        if (userError || !user) {
+          console.error('Error fetching user data:', userError);
+          return res.status(404).json({ message: 'User not found' });
+        }
+  
+        res.status(200).json({
+          companyName: user.username,
+          avatar: user.picture || 'https://via.placeholder.com/100',
+        });
+      });
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      res.status(500).json({ message: 'Internal Server Error' });
+    }
   });
   
 
@@ -514,8 +598,6 @@ router.post('/messages', async (req, res) => {
         console.error('Error creating message:', messageError);
         return res.status(500).json({ message: 'Failed to send message' });
       }
-
-      console.log('Message sent:', message);
 
       // Уведомляем участников чата через Socket.IO, кроме отправителя
       const io = req.app.get('io');
@@ -607,7 +689,7 @@ router.get('/messages/:chatId', async (req, res) => {
         return res.status(500).json({ message: 'Failed to fetch messages' });
       }
 
-      console.log('Messages fetched and updated as read:', messages);
+      
       res.status(200).json({ user_id: userId, messages });
     });
   } catch (err) {
@@ -826,6 +908,7 @@ router.get('/chats', async (req, res) => {
       res.status(500).json({ message: 'Internal Server Error' });
     }
   });
+  
   
   
   router.get('/admin/companies', async (req, res) => {
@@ -1250,6 +1333,132 @@ router.get('/chats', async (req, res) => {
 
 
 
+  router.post('/admin/companies', upload.single('image'), async (req, res) => {
+    const authHeader = req.headers.authorization;
   
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Authorization header is missing or invalid');
+      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
+    }
+  
+    const token = authHeader.split(' ')[1];
+  
+    try {
+      jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+        if (err) {
+          console.error('Token verification error:', err);
+          return res.status(401).json({ message: 'Invalid token' });
+        }
+  
+        const role = decoded['https://Contractor.com/role'];
+        if (role !== 'admin') {
+          return res.status(403).json({ message: 'Access denied' });
+        }
+  
+        const {
+          company_name,
+          owner_name,
+          email,
+          phone,
+          website,
+          services,
+          description,
+          rating,
+          working_hours,
+          years_in_business,
+          verified,
+          selected_actions,
+          selected_objects,
+          selected_locations,
+          selected_sizes,
+          selected_times,
+          user_email,
+        } = req.body;
+  
+        // Преобразуем данные в нужный формат
+        const formattedRating = parseFloat(rating);
+        const formattedYearsInBusiness = parseInt(years_in_business, 10);
+        const formattedVerified = verified === 'true';
+        const formattedActions = JSON.parse(selected_actions);
+        const formattedObjects = JSON.parse(selected_objects);
+        const formattedLocations = JSON.parse(selected_locations);
+        const formattedSizes = JSON.parse(selected_sizes);
+        const formattedTimes = JSON.parse(selected_times);
+  
+        if (
+          !company_name ||
+          !owner_name ||
+          !email ||
+          !phone ||
+          !services ||
+          !description ||
+          !user_email
+        ) {
+          console.error('Missing required fields in request body:', req.body);
+          return res.status(400).json({ message: 'All required fields must be filled' });
+        }
+  
+        let imageUrl = null;
+  
+        if (req.file) {
+          const fileName = `${Date.now()}-${req.file.originalname}`;
+          const params = {
+            Bucket: BUCKET_NAME,
+            Key: fileName,
+            Body: req.file.buffer,
+            ContentType: req.file.mimetype,
+            ACL: 'public-read',
+          };
+  
+          try {
+            const uploadResult = await s3.upload(params).promise();
+            imageUrl = uploadResult.Location;
+          } catch (uploadError) {
+            console.error('Error uploading image:', uploadError);
+            return res.status(500).json({ message: 'Failed to upload image' });
+          }
+        }
+  
+        try {
+          const { data, error } = await supabase.from('companies').insert([
+            {
+              company_name,
+              owner_name,
+              email,
+              phone,
+              website,
+              services,
+              description,
+              rating: formattedRating,
+              working_hours,
+              years_in_business: formattedYearsInBusiness,
+              verified: formattedVerified,
+              selected_actions: formattedActions,
+              selected_objects: formattedObjects,
+              selected_locations: formattedLocations,
+              selected_sizes: formattedSizes,
+              selected_times: formattedTimes,
+              user_email,
+              image_url: imageUrl,
+              status: 'active',
+            },
+          ]);
+  
+          if (error) {
+            console.error('Error inserting company:', error);
+            return res.status(500).json({ message: 'Failed to add company' });
+          }
+  
+          res.status(201).json({ message: 'Company added successfully', data });
+        } catch (err) {
+          console.error('Unexpected error:', err);
+          res.status(500).json({ message: 'Internal Server Error' });
+        }
+      });
+    } catch (err) {
+      console.error('Unexpected error:', err);
+      res.status(500).json({ message: 'Internal Server Error' });
+    }
+  });
   
 module.exports = router;
