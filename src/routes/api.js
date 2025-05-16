@@ -72,6 +72,15 @@ router.get('/companies', async (req, res) => {
   }
 });
 
+
+const formatArray = (array) => {
+  if (!Array.isArray(array)) {
+    return '{}'; // Возвращаем пустой массив в формате PostgreSQL
+  }
+  return `{${array.map((item) => `"${item}"`).join(',')}}`;
+};
+
+
 router.post('/add/companies', upload.single('image'), async (req, res) => {
   const authHeader = req.headers.authorization;
 
@@ -142,13 +151,6 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
         }
       }
 
-      const formatArray = (array) => {
-        if (!Array.isArray(array)) {
-          return '{}'; // Возвращаем пустой массив в формате PostgreSQL
-        }
-        return `{${array.map((item) => `"${item}"`).join(',')}}`;
-      };
-
       try {
         const { data, error } = await supabase.from('companies').insert([
           {
@@ -166,7 +168,7 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
             selected_sizes: formattedSizes,
             selected_times: formattedTimes,
             user_email: userEmail,
-            status: 'active',
+            status: 'review',
             image_url: imageUrl,
           },
         ]);
@@ -484,66 +486,6 @@ router.post('/chats', async (req, res) => {
   });
 
 
-
-  router.get('/chats/:chatId', async (req, res) => {
-    const authHeader = req.headers.authorization;
-  
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
-    }
-  
-    const token = authHeader.split(' ')[1];
-    const { chatId } = req.params;
-  
-    try {
-      jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
-        if (err) {
-          console.error('Token verification error:', err);
-          return res.status(401).json({ message: 'Invalid token' });
-        }
-  
-        const userEmail = decoded.email;
-  
-        // Получаем данные чата
-        const { data: chatParticipants, error: participantsError } = await supabase
-          .from('chat_participants')
-          .select('user_id')
-          .eq('chat_id', chatId);
-  
-        if (participantsError || !chatParticipants) {
-          console.error('Error fetching chat participants:', participantsError);
-          return res.status(404).json({ message: 'Chat not found' });
-        }
-  
-        // Получаем данные другого участника
-        const otherParticipant = chatParticipants.find((p) => p.user_id !== decoded.user_id);
-        if (!otherParticipant) {
-          return res.status(404).json({ message: 'Chat participant not found' });
-        }
-  
-        const { data: user, error: userError } = await supabase
-          .from('users')
-          .select('username, picture')
-          .eq('user_id', otherParticipant.user_id)
-          .single();
-  
-        if (userError || !user) {
-          console.error('Error fetching user data:', userError);
-          return res.status(404).json({ message: 'User not found' });
-        }
-  
-        res.status(200).json({
-          companyName: user.username,
-          avatar: user.picture || 'https://via.placeholder.com/100',
-        });
-      });
-    } catch (err) {
-      console.error('Unexpected error:', err);
-      res.status(500).json({ message: 'Internal Server Error' });
-    }
-  });
-  
-
 router.post('/messages', async (req, res) => {
   const authHeader = req.headers.authorization;
 
@@ -689,8 +631,29 @@ router.get('/messages/:chatId', async (req, res) => {
         return res.status(500).json({ message: 'Failed to fetch messages' });
       }
 
-      
-      res.status(200).json({ user_id: userId, messages });
+      // Получаем данные отправителей сообщений
+      const senderIds = [...new Set(messages.map((msg) => msg.sender_id))]; // Уникальные sender_id
+      const { data: senders, error: sendersError } = await supabase
+        .from('users')
+        .select('user_id, username, picture')
+        .in('user_id', senderIds);
+
+      if (sendersError) {
+        console.error('Error fetching senders:', sendersError);
+        return res.status(500).json({ message: 'Failed to fetch senders' });
+      }
+
+      // Добавляем имя и изображение к каждому сообщению
+      const enrichedMessages = messages.map((msg) => {
+        const sender = senders.find((user) => user.user_id === msg.sender_id);
+        return {
+          ...msg,
+          sender_name: sender?.username || 'Unknown',
+          sender_picture: sender?.picture || null,
+        };
+      });
+
+      res.status(200).json({ user_id: userId, messages: enrichedMessages });
     });
   } catch (err) {
     console.error('Unexpected error:', err);
