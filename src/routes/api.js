@@ -97,7 +97,7 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
         return res.status(401).json({ message: 'Invalid token' });
       }
 
-      const userEmail = decoded.email; // Извлекаем email из токена
+      const userEmail = decoded.email;
 
       const {
         companyName,
@@ -112,6 +112,13 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
 
       const {
         selectedActions = '[]',
+        selectedBuilds = '[]',
+        selectedInstalls = '[]',
+        selectedReplaces = '[]',
+        selectedRemoves = '[]',
+        selectedRepairs = '[]',
+        selectedCleans = '[]',
+        selectedAssembles = '[]',
         selectedObjects = '[]',
         selectedLocations = '[]',
         selectedSizes = '[]',
@@ -119,19 +126,24 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
       } = req.body;
 
       const formattedActions = formatArray(JSON.parse(selectedActions));
+      const formattedBuilds = formatArray(JSON.parse(selectedBuilds));
+      const formattedInstalls = formatArray(JSON.parse(selectedInstalls));
+      const formattedReplaces = formatArray(JSON.parse(selectedReplaces));
+      const formattedRemoves = formatArray(JSON.parse(selectedRemoves));
+      const formattedRepairs = formatArray(JSON.parse(selectedRepairs));
+      const formattedCleans = formatArray(JSON.parse(selectedCleans));
+      const formattedAssembles = formatArray(JSON.parse(selectedAssembles));
       const formattedObjects = formatArray(JSON.parse(selectedObjects));
       const formattedLocations = formatArray(JSON.parse(selectedLocations));
       const formattedSizes = formatArray(JSON.parse(selectedSizes));
       const formattedTimes = formatArray(JSON.parse(selectedTimes));
 
-      // Проверка обязательных полей
       if (!companyName || !ownerName || !email || !phone || !experience || !services || !description) {
         return res.status(400).json({ message: 'All required fields must be filled' });
       }
 
       let imageUrl = null;
 
-      // Если изображение было загружено, сохраняем его в Vultr
       if (req.file) {
         const fileName = `${Date.now()}-${req.file.originalname}`;
         const params = {
@@ -139,12 +151,12 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
           Key: fileName,
           Body: req.file.buffer,
           ContentType: req.file.mimetype,
-          ACL: 'public-read', // Делаем файл общедоступным
+          ACL: 'public-read',
         };
 
         try {
           const uploadResult = await s3.upload(params).promise();
-          imageUrl = uploadResult.Location; // Сохраняем URL загруженного изображения
+          imageUrl = uploadResult.Location;
         } catch (uploadError) {
           console.error('Error uploading image to Vultr:', uploadError);
           return res.status(500).json({ message: 'Failed to upload image' });
@@ -152,7 +164,7 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
       }
 
       try {
-        const { data, error } = await supabase.from('companies').insert([
+        const { data: newContractor, error: insertError } = await supabase.from('companies').insert([
           {
             company_name: companyName,
             owner_name: ownerName,
@@ -163,6 +175,13 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
             services,
             description,
             selected_actions: formattedActions,
+            selected_builds: formattedBuilds,
+            selected_installs: formattedInstalls,
+            selected_replaces: formattedReplaces,
+            selected_removes: formattedRemoves,
+            selected_repairs: formattedRepairs,
+            selected_cleans: formattedCleans,
+            selected_assembles: formattedAssembles,
             selected_objects: formattedObjects,
             selected_locations: formattedLocations,
             selected_sizes: formattedSizes,
@@ -171,14 +190,26 @@ router.post('/add/companies', upload.single('image'), async (req, res) => {
             status: 'review',
             image_url: imageUrl,
           },
-        ]);
+        ]).select().single();
 
-        if (error) {
-          console.error('Error inserting data:', error);
+        if (insertError) {
+          console.error('Error inserting data:', insertError);
           return res.status(500).json({ message: 'Failed to save data' });
         }
 
-        res.status(201).json({ message: 'Company successfully added', data });
+        // Получаем обновлённый список контрактов текущего пользователя
+        const { data: userContracts, error: fetchError } = await supabase
+          .from('companies')
+          .select('*')
+          .eq('user_email', userEmail)
+          .order('created_at', { ascending: false });
+
+        if (fetchError) {
+          console.error('Error fetching user contracts:', fetchError);
+          return res.status(500).json({ message: 'Failed to fetch user contracts' });
+        }
+
+        res.status(201).json({ message: 'Company successfully added', contracts: userContracts });
       } catch (err) {
         console.error('Unexpected error:', err);
         res.status(500).json({ message: 'Internal Server Error' });
@@ -1143,52 +1174,7 @@ router.get('/chats', async (req, res) => {
   });
 
 
-  router.get('/search-options', async (req, res) => {
-    const authHeader = req.headers.authorization;
   
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
-    }
-
-    const token = authHeader.split(' ')[1];
-  
-    try {
-      jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
-        if (err) {
-          console.error('Token verification error:', err);
-          return res.status(401).json({ message: 'Invalid token' });
-        }
-
-        const role = decoded['https://Contractor.com/role']; // Извлекаем роль из токена
-        if (role !== 'admin') {
-          console.error('Access denied: User is not an admin');
-          return res.status(403).json({ message: 'Access denied' });
-        }
-  
-        try {
-          // Получаем все опции из таблицы search_options
-          const { data, error } = await supabase
-            .from('search_options')
-            .select('*')
-            .order('value', { ascending: true });
-  
-          if (error) {
-            console.error('Error fetching search options:', error);
-            return res.status(500).json({ message: 'Failed to fetch search options' });
-          }
-          
-          
-          res.status(200).json(data);
-        } catch (err) {
-          console.error('Unexpected error:', err);
-          res.status(500).json({ message: 'Internal Server Error' });
-        }
-      });
-    } catch (err) {
-      console.error('Unexpected error:', err);
-      res.status(500).json({ message: 'Internal Server Error' });
-    }
-  });
 
 
   router.post('/search-options', async (req, res) => {
@@ -1206,14 +1192,14 @@ router.get('/chats', async (req, res) => {
           console.error('Token verification error:', err);
           return res.status(401).json({ message: 'Invalid token' });
         }
-
+  
         const role = decoded['https://Contractor.com/role']; // Извлекаем роль из токена
         if (role !== 'admin') {
           console.error('Access denied: User is not an admin');
           return res.status(403).json({ message: 'Access denied' });
         }
   
-        const { category, value } = req.body;
+        const { category, value, next_category } = req.body;
   
         if (!category || !value) {
           return res.status(400).json({ message: 'Category and value are required' });
@@ -1222,7 +1208,7 @@ router.get('/chats', async (req, res) => {
         try {
           const { data, error } = await supabase
             .from('search_options')
-            .insert([{ category, value }]);
+            .insert([{ category, value, next_category }]);
   
           if (error) {
             console.error('Error adding search option:', error);
@@ -1331,6 +1317,13 @@ router.get('/chats', async (req, res) => {
           years_in_business,
           verified,
           selected_actions,
+          selected_builds,
+          selected_installs,
+          selected_replaces,
+          selected_removes,
+          selected_repairs,
+          selected_cleans,
+          selected_assembles,
           selected_objects,
           selected_locations,
           selected_sizes,
@@ -1343,6 +1336,13 @@ router.get('/chats', async (req, res) => {
         const formattedYearsInBusiness = parseInt(years_in_business, 10);
         const formattedVerified = verified === 'true';
         const formattedActions = JSON.parse(selected_actions);
+        const formattedBuilds = JSON.parse(selected_builds);
+        const formattedInstalls = JSON.parse(selected_installs);
+        const formattedReplaces = JSON.parse(selected_replaces);
+        const formattedRemoves = JSON.parse(selected_removes);
+        const formattedRepairs = JSON.parse(selected_repairs);
+        const formattedCleans = JSON.parse(selected_cleans);
+        const formattedAssembles = JSON.parse(selected_assembles);
         const formattedObjects = JSON.parse(selected_objects);
         const formattedLocations = JSON.parse(selected_locations);
         const formattedSizes = JSON.parse(selected_sizes);
@@ -1397,6 +1397,13 @@ router.get('/chats', async (req, res) => {
               years_in_business: formattedYearsInBusiness,
               verified: formattedVerified,
               selected_actions: formattedActions,
+              selected_builds: formattedBuilds,
+              selected_installs: formattedInstalls,
+              selected_replaces: formattedReplaces,
+              selected_removes: formattedRemoves,
+              selected_repairs: formattedRepairs,
+              selected_cleans: formattedCleans,
+              selected_assembles: formattedAssembles,
               selected_objects: formattedObjects,
               selected_locations: formattedLocations,
               selected_sizes: formattedSizes,
