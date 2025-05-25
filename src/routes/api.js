@@ -544,7 +544,7 @@ router.post('/messages', async (req, res) => {
     try {
       const { data: user, error: userError } = await supabase
         .from('users')
-        .select('user_id')
+        .select('username, user_id')
         .eq('email', userEmail)
         .single();
 
@@ -552,6 +552,8 @@ router.post('/messages', async (req, res) => {
         console.error('User not found:', userError);
         return res.status(404).json({ message: 'User not found' });
       }
+
+      const senderName = user.username || 'Unknown';
 
       const userId = user.user_id;
 
@@ -571,16 +573,33 @@ router.post('/messages', async (req, res) => {
         console.error('Error creating message:', messageError);
         return res.status(500).json({ message: 'Failed to send message' });
       }
+      
 
       // Уведомляем участников чата через Socket.IO, кроме отправителя
       const io = req.app.get('io');
-      io.to(chatId).emit('newMessage', {
-        id: message.message_id,
-        sender_id: userId,
-        content: message.message_text,
-        timestamp: message.sent_at,
-        chatId,
-      });
+      const socketId = req.headers['x-socket-id'];
+      console.log('Socket ID:', socketId);
+
+      if (socketId && io.sockets.sockets.get(socketId)) {
+        io.to(chatId).except(socketId).emit('newMessage', {
+          id: message.message_id,
+          sender_id: userId,
+          sender_name: senderName,
+          content: message.message_text,
+          timestamp: message.sent_at,
+          chatId,
+        });
+      } else {
+        // fallback, если socketId не передан
+        io.to(chatId).emit('newMessage', {
+          id: message.message_id,
+          sender_id: userId,
+          sender_name: senderName,
+          content: message.message_text,
+          timestamp: message.sent_at,
+          chatId,
+        });
+      }
 
       res.status(201).json({ message: 'Message sent', data: message });
     } catch (err) {
@@ -1112,6 +1131,45 @@ router.get('/chats', async (req, res) => {
             return res.status(500).json({ message: 'Failed to update company status' });
           }
   
+          // Получаем компанию по id
+          const { data: company, error: companyError } = await supabase
+            .from('companies')
+            .select('user_email, company_name')
+            .eq('id', id)
+            .single();
+  
+          if (companyError || !company) {
+            return res.status(404).json({ message: 'Company not found' });
+          }
+  
+          // Получаем user_id по user_email
+          const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('user_id')
+            .eq('email', company.user_email)
+            .single();
+  
+          if (userError || !user) {
+            return res.status(404).json({ message: 'User not found' });
+          }
+          
+          console.log('User found:', user.user_email, 'company.company_name', company.company_name);
+          // Добавляем уведомление
+          const { data: notifData, error: notifError } = await supabase.from('notifications').insert([{
+            user_email: company.user_email, // обязательно user_email, а не user_id!
+            type: 'success',
+            message: `Your company "${company.company_name}" has successfully passed moderation.`,
+            created_at: new Date().toISOString(),
+            read: false
+          }]);
+
+          if (notifError) {
+            console.error('Ошибка добавления уведомления:', notifError);
+            return res.status(500).json({ message: 'Failed to add notification', notifError });
+          } else {
+            console.log('Уведомление успешно добавлено:', notifData);
+          }
+  
           res.status(200).json({ message: 'Company status updated to active', data });
         } catch (err) {
           console.error('Unexpected error:', err);
@@ -1122,6 +1180,77 @@ router.get('/chats', async (req, res) => {
       console.error('Unexpected error:', err);
       res.status(500).json({ message: 'Internal Server Error' });
     }
+  });
+
+
+  router.get('/notifications', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
+    }
+    const token = authHeader.split(' ')[1];
+
+    jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ message: 'Invalid token' });
+      }
+      const userEmail = decoded.email;
+      // Получаем уведомления по user_email
+      const { data: notifications, error } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_email', userEmail)
+        .eq('read', false)
+        .order('created_at', { ascending: false });
+      if (error) {
+        return res.status(500).json({ message: 'Failed to fetch notifications' });
+      }
+      res.status(200).json(notifications);
+    });
+  });
+
+
+  // Добавь этот эндпоинт в свой api.js
+
+  router.put('/notifications/mark-as-read', async (req, res) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ message: 'Authorization token is missing or invalid' });
+    }
+    const token = authHeader.split(' ')[1];
+
+    jwt.verify(token, getKey, { algorithms: ['RS256'] }, async (err, decoded) => {
+      if (err) {
+        return res.status(401).json({ message: 'Invalid token' });
+      }
+      
+      const userEmail = decoded.email;
+      const { notificationIds } = req.body;
+      
+      try {
+        let query = supabase
+          .from('notifications')
+          .update({ read: true })
+          .eq('user_email', userEmail);
+        
+        // Если указаны конкретные ID, обновляем только их
+        if (notificationIds && notificationIds.length > 0) {
+          query = query.in('id', notificationIds);
+        }
+        
+        const { data, error } = await query;
+        
+        if (error) {
+          console.error('Error marking notifications as read:', error);
+          return res.status(500).json({ message: 'Failed to mark notifications as read' });
+        }
+        
+        res.status(200).json({ message: 'Notifications marked as read', data });
+      } catch (err) {
+        console.error('Unexpected error:', err);
+        res.status(500).json({ message: 'Internal Server Error' });
+      }
+    });
   });
 
 
@@ -1159,6 +1288,44 @@ router.get('/chats', async (req, res) => {
           if (error) {
             console.error('Error updating company status:', error);
             return res.status(500).json({ message: 'Failed to update company status' });
+          }
+  
+          // Получаем компанию по id
+          const { data: company, error: companyError } = await supabase
+            .from('companies')
+            .select('user_email, company_name')
+            .eq('id', id)
+            .single();
+  
+          if (companyError || !company) {
+            return res.status(404).json({ message: 'Company not found' });
+          }
+  
+          // Получаем user_id по user_email
+          const { data: user, error: userError } = await supabase
+            .from('users')
+            .select('user_id')
+            .eq('email', company.user_email)
+            .single();
+  
+          if (userError || !user) {
+            return res.status(404).json({ message: 'User not found' });
+          }
+  
+          // Добавляем уведомление
+          const { data: notifData, error: notifError } = await supabase.from('notifications').insert([{
+            user_email: company.user_email,
+            type: 'error',
+            message: `Your Company "${company.company_name}" has been rejected.`,
+            created_at: new Date().toISOString(),
+            read: false
+          }]);
+
+          if (notifError) {
+            console.error('Ошибка добавления уведомления:', notifError);
+            return res.status(500).json({ message: 'Failed to add notification', notifError });
+          } else {
+            console.log('Уведомление успешно добавлено:', notifData);
           }
   
           res.status(200).json({ message: 'Company status updated to rejected', data });

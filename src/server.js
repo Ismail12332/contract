@@ -13,16 +13,13 @@ const { Server } = require('socket.io');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const distPath = path.join(__dirname, '../public/dist');
-app.use(express.static(distPath));
-
 
 const server = http.createServer(app); // создаём HTTP-сервер на базе Express
 const io = new Server(server, {
     cors: {
         origin: 'https://contractors-0q4c.onrender.com',
         methods: ['GET', 'POST', 'DELETE', 'PATCH', 'PUT', 'OPTIONS'],
-        allowedHeaders: ['Content-Type','Authorization'],
+        allowedHeaders: ['Content-Type','Authorization', 'x-socket-id'],
     }
 });
 
@@ -33,13 +30,16 @@ io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
     socket.on('joinChat', (chatId) => {
-        socket.join(chatId);
+        socket.join(chatId.toString());
         console.log(`Socket ${socket.id} joined chat ${chatId}`);
     });
 
     socket.on('disconnect', () => {
         console.log('A user disconnected:', socket.id);
     });
+});
+
+server.listen(PORT, () => {
 });
 
 // Настройка Auth0
@@ -61,15 +61,11 @@ const checkJwt = jwt({
     algorithms: ['RS256'],
 });
 
-server.listen(PORT, () => {
-    console.log(`✅ Server is running on port ${PORT}`);
-});
-
 // Настройка CORS
 app.use(cors({
     origin: 'https://contractors-0q4c.onrender.com', // Укажите адрес вашего фронтенда
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type'], // Разрешаем заголовок Authorization
+    allowedHeaders: ['Authorization', 'Content-Type', 'x-socket-id'], // Разрешаем заголовок Authorization
     credentials: false, // Не используем куки
 }));
 app.use(bodyParser.json()); // Для обработки JSON-запросов
@@ -94,9 +90,4 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
-
-// Для SPA: всегда возвращаем index.html на все остальные маршруты
-app.get('*', (req, res) => {
-    res.sendFile(path.join(distPath, 'index.html'));
 });
