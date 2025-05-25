@@ -13,6 +13,9 @@ const { Server } = require('socket.io');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const distPath = path.join(__dirname, '../public/dist');
+app.use(express.static(distPath));
+
 
 const server = http.createServer(app); // создаём HTTP-сервер на базе Express
 const io = new Server(server, {
@@ -39,9 +42,6 @@ io.on('connection', (socket) => {
     });
 });
 
-server.listen(PORT, () => {
-});
-
 // Настройка Auth0
 const authConfig = {
     domain: process.env.AUTH0_DOMAIN,
@@ -61,11 +61,15 @@ const checkJwt = jwt({
     algorithms: ['RS256'],
 });
 
+server.listen(PORT, () => {
+    console.log(`✅ Server is running on port ${PORT}`);
+});
+
 // Настройка CORS
 app.use(cors({
     origin: 'https://contractors-0q4c.onrender.com', // Укажите адрес вашего фронтенда
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Authorization', 'Content-Type', 'x-socket-id'], // Разрешаем заголовок Authorization
+    allowedHeaders: ['Authorization', 'Content-Type'], // Разрешаем заголовок Authorization
     credentials: false, // Не используем куки
 }));
 app.use(bodyParser.json()); // Для обработки JSON-запросов
@@ -90,4 +94,9 @@ process.on('uncaughtException', (err) => {
 
 process.on('unhandledRejection', (reason, promise) => {
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Для SPA: всегда возвращаем index.html на все остальные маршруты
+app.get('*', (req, res) => {
+    res.sendFile(path.join(distPath, 'index.html'));
 });
