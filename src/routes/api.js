@@ -869,11 +869,11 @@ router.get('/chats', async (req, res) => {
   
   router.get('/solana-payment-info', async (req, res) => {
     try {
-      // Получаем курс SOL к USD с CoinGecko
+      // Получаем курс SOL к USD с Binance
       const { data } = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT');
-      const solPrice = data.solana.usd;
+      const solPrice = parseFloat(data.price); // Получаем цену SOL
 
-      // Ваш адрес получателя (можно хранить в .env)  
+      // Ваш адрес получателя (можно хранить в .env)
       const solReceiver = process.env.SOL_RECEIVER || 'FCM674QSJV5dYj1wsWnMSfZQnb31NZimj3yQK3vCSPVJ';
 
       res.json({
