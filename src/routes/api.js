@@ -881,6 +881,7 @@ router.get('/chats', async (req, res) => {
         solReceiver,
       });
     } catch (err) {
+      console.error('Error fetching Solana payment info:', err);
       res.status(500).json({ message: 'Failed to fetch Solana payment info' });
     }
   });
