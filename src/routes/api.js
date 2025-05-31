@@ -870,7 +870,7 @@ router.get('/chats', async (req, res) => {
   router.get('/solana-payment-info', async (req, res) => {
     try {
       // Получаем курс SOL к USD с CoinGecko
-      const { data } = await axios.get('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+      const { data } = await axios.get('https://api.binance.com/api/v3/ticker/price?symbol=SOLUSDT');
       const solPrice = data.solana.usd;
 
       // Ваш адрес получателя (можно хранить в .env)  
